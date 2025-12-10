@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { Button, Form } from '@douyinfe/semi-ui';
-import { IconSearch } from '@douyinfe/semi-icons';
+import { IconSearch, IconDownload, IconUpload } from '@douyinfe/semi-icons';
 
 const ChannelsFilters = ({
   setEditingChannel,
@@ -35,7 +35,10 @@ const ChannelsFilters = ({
   loading,
   searching,
   t,
+  onExport,
+  onImport,
 }) => {
+  const fileInputRef = useRef(null);
   return (
     <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
       <div className='flex gap-2 w-full md:w-auto order-2 md:order-1'>
@@ -150,6 +153,38 @@ const ChannelsFilters = ({
           >
             {t('重置')}
           </Button>
+          <Button
+            size='small'
+            type='tertiary'
+            icon={<IconDownload />}
+            onClick={onExport}
+            className='w-full md:w-auto'
+          >
+            {t('导出')}
+          </Button>
+          <Button
+            size='small'
+            type='tertiary'
+            icon={<IconUpload />}
+            onClick={() => fileInputRef.current?.click()}
+            className='w-full md:w-auto'
+          >
+            {t('导入')}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type='file'
+            accept='.xlsx,.xls'
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                onImport(file);
+                // 清空 input，允许重复选择同一文件
+                e.target.value = '';
+              }
+            }}
+          />
         </Form>
       </div>
     </div>

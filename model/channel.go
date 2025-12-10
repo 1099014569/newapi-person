@@ -991,3 +991,10 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 	}
 	return counts, nil
 }
+
+// GetAllChannelsForExport 获取所有渠道用于导出（包含密钥）
+func GetAllChannelsForExport() ([]Channel, error) {
+	var channels []Channel
+	err := DB.Order("id desc").Find(&channels).Error
+	return channels, err
+}

@@ -1078,6 +1078,123 @@ func CopyChannel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"id": clone.Id}})
 }
 
+// ExportChannels 导出所有渠道到 Excel 文件
+// GET /api/channel/export
+func ExportChannels(c *gin.Context) {
+	// 查询所有渠道
+	channels, err := model.GetAllChannelsForExport()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	// 生成 Excel 文件
+	excelFile, err := service.GenerateChannelsExcel(channels)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "生成 Excel 文件失败: " + err.Error()})
+		return
+	}
+
+	// 生成文件名（带时间戳）
+	filename := fmt.Sprintf("channels_export_%s.xlsx", common.GetTimeString())
+
+	// 设置响应头
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	c.Header("Content-Transfer-Encoding", "binary")
+
+	// 写入响应
+	if err := excelFile.Write(c.Writer); err != nil {
+		common.SysError("导出渠道 Excel 失败: " + err.Error())
+		return
+	}
+}
+
+// ImportChannels 从 Excel 文件导入渠道
+// POST /api/channel/import
+func ImportChannels(c *gin.Context) {
+	// 获取上传的文件
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "未找到上传文件"})
+		return
+	}
+
+	// 打开文件
+	f, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "打开文件失败: " + err.Error()})
+		return
+	}
+	defer f.Close()
+
+	// 解析 Excel 文件
+	result, err := service.ParseChannelsExcel(f)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "解析 Excel 文件失败: " + err.Error()})
+		return
+	}
+
+	// 批量导入渠道
+	successCount := 0
+	failCount := 0
+	var errors []map[string]interface{}
+
+	for i, channel := range result.Channels {
+		// 如果 ID 已存在，清空 ID（让数据库自动分配新 ID）
+		if channel.Id > 0 {
+			existingChannel, _ := model.GetChannelById(channel.Id, false)
+			if existingChannel != nil {
+				channel.Id = 0 // 清空 ID，创建新渠道
+			}
+		}
+
+		// 设置创建时间
+		channel.CreatedTime = common.GetTimestamp()
+
+		// 验证渠道数据
+		if err := validateChannel(&channel, true); err != nil {
+			failCount++
+			errors = append(errors, map[string]interface{}{
+				"row":     i + 2, // Excel 行号（从第 2 行开始，第 1 行是表头）
+				"message": err.Error(),
+				"name":    channel.Name,
+			})
+			continue
+		}
+
+		// 插入数据库
+		if err := model.BatchInsertChannels([]model.Channel{channel}); err != nil {
+			failCount++
+			errors = append(errors, map[string]interface{}{
+				"row":     i + 2,
+				"message": "插入数据库失败: " + err.Error(),
+				"name":    channel.Name,
+			})
+			continue
+		}
+
+		successCount++
+	}
+
+	// 刷新缓存
+	if successCount > 0 {
+		model.InitChannelCache()
+	}
+
+	// 返回结果
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("导入完成：成功 %d 条，失败 %d 条", successCount, failCount),
+		"data": gin.H{
+			"total":         len(result.Channels),
+			"success_count": successCount,
+			"fail_count":    failCount,
+			"errors":        errors,
+		},
+	})
+}
+
 // MultiKeyManageRequest represents the request for multi-key management operations
 type MultiKeyManageRequest struct {
 	ChannelId int    `json:"channel_id"`

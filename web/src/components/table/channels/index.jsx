@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState } from 'react';
 import CardPro from '../../common/ui/CardPro';
 import ChannelsTable from './ChannelsTable';
 import ChannelsActions from './ChannelsActions';
@@ -31,11 +31,36 @@ import ColumnSelectorModal from './modals/ColumnSelectorModal';
 import EditChannelModal from './modals/EditChannelModal';
 import EditTagModal from './modals/EditTagModal';
 import MultiKeyManageModal from './modals/MultiKeyManageModal';
+import ImportResultModal from './modals/ImportResultModal';
 import { createCardProPagination } from '../../../helpers/utils';
+import {
+  exportChannels,
+  importChannels,
+} from '../../../helpers/channelImportExport';
 
 const ChannelsPage = () => {
   const channelsData = useChannelsData();
   const isMobile = useIsMobile();
+  const [showImportResult, setShowImportResult] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+
+  // 处理导出
+  const handleExport = async () => {
+    await exportChannels();
+  };
+
+  // 处理导入
+  const handleImport = async (file) => {
+    const result = await importChannels(file, () => {
+      // 导入成功后刷新列表
+      channelsData.refresh();
+    });
+
+    if (result) {
+      setImportResult(result);
+      setShowImportResult(true);
+    }
+  };
 
   return (
     <>
@@ -61,13 +86,25 @@ const ChannelsPage = () => {
         channel={channelsData.currentMultiKeyChannel}
         onRefresh={channelsData.refresh}
       />
+      <ImportResultModal
+        visible={showImportResult}
+        result={importResult}
+        onClose={() => setShowImportResult(false)}
+        t={channelsData.t}
+      />
 
       {/* Main Content */}
       <CardPro
         type='type3'
         tabsArea={<ChannelsTabs {...channelsData} />}
         actionsArea={<ChannelsActions {...channelsData} />}
-        searchArea={<ChannelsFilters {...channelsData} />}
+        searchArea={
+          <ChannelsFilters
+            {...channelsData}
+            onExport={handleExport}
+            onImport={handleImport}
+          />
+        }
         paginationArea={createCardProPagination({
           currentPage: channelsData.activePage,
           pageSize: channelsData.pageSize,
